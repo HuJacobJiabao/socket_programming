@@ -14,6 +14,7 @@
 #include <cstring>
 #include <fstream>
 #include <sstream>
+#include <vector>
 
 using namespace std;
 
@@ -23,6 +24,7 @@ using namespace std;
 #define PORT_P 42812
 #define PORT_Q 43812
 #define MAXBUFLEN 1024
+#define BUFSIZE 8192
 #define LOCALHOST "127.0.0.1"
 
 void setupTCPSocket(int& sockfd, struct sockaddr_in& addr);
@@ -31,7 +33,13 @@ void setupServer(struct sockaddr_in& addr, const int port);
 string encryptPassword(const string& password);
 bool handleLogin(int client_fd, int udp_sockfd,
                  struct sockaddr_in& serverAAddr,
-                 bool& logged_in);
+                 bool& logged_in,
+                 string& username);
+string handleClientCommand(const string& command,
+                           int udp_sockfd,
+                           struct sockaddr_in& serverPAddr,
+                           struct sockaddr_in& serverQAddr,
+                           const string& username);
 
 struct Credentials {
     char username[51];
@@ -40,12 +48,19 @@ struct Credentials {
 
 int main() {
     int tcp_sockfd, udp_sockfd, client_fd;
-    struct sockaddr_in serverTCPAddr, serverUDPAddr, serverAAddr, clientAddr;
+    struct sockaddr_in serverTCPAddr, 
+                       serverUDPAddr, 
+                       serverAAddr, 
+                       serverQAddr,
+                       serverPAddr,
+                       clientAddr;
     socklen_t addr_size = sizeof(clientAddr);
 
     setupTCPSocket(tcp_sockfd, serverTCPAddr);
     setupUDPSocket(udp_sockfd, serverUDPAddr);
     setupServer(serverAAddr, PORT_A);
+    setupServer(serverPAddr, PORT_P);
+    setupServer(serverQAddr, PORT_Q);
 
     cout << "[Server M] Booting up using UDP on port " << PORT_UDP << ".\n";
 
@@ -70,10 +85,11 @@ int main() {
 
             bool logged_in = false;
 
+            string username;
             while (true) {
                 if (!logged_in) {
                     // Expect login credentials
-                    bool active = handleLogin(client_fd, udp_sockfd, serverAAddr, logged_in);
+                    bool active = handleLogin(client_fd, udp_sockfd, serverAAddr, logged_in, username);
                     if (!active) {
                         cout << "[Server M - PID " << getpid() << "] Client disconnected during login.\n";
                         break;
@@ -91,13 +107,9 @@ int main() {
                     buffer[bytes_received] = '\0';
                     string command(buffer);
 
-                    if (command == "exit") {
-                        cout << "[Server M - PID " << getpid() << "] Client requested exit.\n";
-                        break;
-                    }
+                    string reply = handleClientCommand(command, udp_sockfd, serverPAddr, serverQAddr, username);
 
-                    // TODO: Forward to serverP/serverQ based on command
-                    string reply = "[Server M] Command received: " + command;
+                    // Send result to client
                     send(client_fd, reply.c_str(), reply.length(), 0);
                 }
             }
@@ -182,7 +194,8 @@ string encryptPassword(const string& password) {
 
 bool handleLogin(int client_fd, int udp_sockfd,
                  struct sockaddr_in& serverAAddr,
-                 bool& logged_in) {
+                 bool& logged_in,
+                 string& username) {
     Credentials cred;
     memset(&cred, 0, sizeof(cred));
 
@@ -191,7 +204,7 @@ bool handleLogin(int client_fd, int udp_sockfd,
         return false;
     }
 
-    string username(cred.username);
+    username = string(cred.username);
     string password(cred.password);
     cout << "[Server M] Received username " << username << " and Password ****." << endl;
 
@@ -213,4 +226,77 @@ bool handleLogin(int client_fd, int udp_sockfd,
     send(client_fd, reply, strlen(reply), 0);
     logged_in = string(reply) == "Login successful";
     return true;
+}
+
+string handleClientCommand(const string& command,
+                           int udp_sockfd,
+                           struct sockaddr_in& serverPAddr,
+                           struct sockaddr_in& serverQAddr,
+                           const string& username) {
+    istringstream iss(command);
+    string cmd;
+    iss >> cmd;
+
+    std::vector<char> buffer(BUFSIZE);
+    socklen_t addr_len;
+
+    if (cmd == "quote") {
+        string stock;
+        bool has_stock = bool(iss >> stock);
+
+        // === Log incoming quote request from client ===
+        if (has_stock) {
+            cout << "[Server M] Received a quote request from " << username
+                 << " for stock " << stock << ", using TCP over port " << PORT_TCP << "." << endl;
+        } else {
+            cout << "[Server M] Received a quote request from " << username
+                 << ", using TCP over port " << PORT_TCP << "." << endl;
+        }
+
+        // === Forward request to Server Q ===
+        sendto(udp_sockfd, command.c_str(), command.length(), 0,
+               (struct sockaddr*)&serverQAddr, sizeof(serverQAddr));
+        cout << "[Server M] Forwarded the quote request to server Q." << endl;
+
+        // === Receive quote response from Server Q ===
+        addr_len = sizeof(serverQAddr);
+        int bytes_received = recvfrom(udp_sockfd, buffer.data(), buffer.size() - 1, 0,
+                                      (struct sockaddr*)&serverQAddr, &addr_len);
+        if (bytes_received > 0) {
+            buffer[bytes_received] = '\0';
+
+            if (has_stock) {
+                cout << "[Server M] Received the quote response from server Q for stock "
+                     << stock << " using UDP over " << PORT_UDP << "." << endl;
+            } else {
+                cout << "[Server M] Received the quote response from server Q using UDP over "
+                     << PORT_UDP << "." << endl;
+            }
+
+            cout << "[Server M] Forwarded the quote response to the client." << endl;
+            return string(buffer.data());
+        } else {
+            return "[Server M] Error receiving quote response from Server Q.";
+        }
+
+    } else if (cmd == "buy" || cmd == "sell" || cmd == "position") {
+        // Prepend username
+        string modified_cmd = username + " " + command;
+
+        sendto(udp_sockfd, modified_cmd.c_str(), modified_cmd.length(), 0,
+               (struct sockaddr*)&serverPAddr, sizeof(serverPAddr));
+
+        addr_len = sizeof(serverPAddr);
+        int bytes_received = recvfrom(udp_sockfd, buffer.data(), buffer.size() - 1, 0,
+                                      (struct sockaddr*)&serverPAddr, &addr_len);
+        if (bytes_received > 0) {
+            buffer[bytes_received] = '\0';
+            return string(buffer.data());
+        } else {
+            return "[Server M] Error receiving response from Server P.";
+        }
+
+    } else {
+        return "[Server M] Invalid command.";
+    }
 }

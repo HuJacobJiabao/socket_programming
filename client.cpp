@@ -11,11 +11,15 @@
 #include <sys/wait.h>
 
 #include <iostream>
-#include <string>
+#include <cstring>
+#include <fstream>
+#include <sstream>
+#include <vector>
 
 #define SERVERM_TCP_PORT 45812
 #define LOCALHOST "127.0.0.1"
 #define MAXBUFLEN 1024
+#define BUFSIZE 8192
 
 using namespace std;
 
@@ -23,6 +27,11 @@ struct Credentials {
     char username[51];
     char password[51];
 };
+
+void handleQuoteCommand(int sockfd, const string& input);
+void handleBuyCommand(int sockfd, const string& input, const string& username);
+void handleSellCommand(int sockfd, const string& input, const string& username);
+void handlePositionCommand(int sockfd, const string& username);
 
 int main() {
     int sockfd;
@@ -85,38 +94,65 @@ int main() {
 
     }
 
-
+    cout << "[Client] Please enter the command:\n"
+         << "<quote>\n"
+         << "<quote <stock name>>\n"
+         << "<buy <stock name> <number of shares>>\n"
+         << "<sell <stock name> <number of shares>>\n"
+         << "<position>\n"
+         << "<exit>" << endl;
     // === Command Loop ===
     while (true) {
-        cout << "[Client] Please enter the command:\n"
-            << "<quote>\n"
-            << "<quote <stock name>>\n"
-            << "<buy <stock name> <number of shares>>\n"
-            << "<sell <stock name> <number of shares>>\n"
-            << "<position>\n"
-            << "<exit>" << endl;
+        cout << ">";
         string input;
         getline(cin, input);
 
         if (input.empty()) continue;
 
-        send(sockfd, input.c_str(), input.length(), 0);
-
-        if (input == "exit") {
-            break;
-        }
-
-        char buffer[MAXBUFLEN] = {0};
-        int bytes_received = recv(sockfd, buffer, MAXBUFLEN - 1, 0);
-        if (bytes_received > 0) {
-            buffer[bytes_received] = '\0'; // ensure null termination
-            cout << buffer << endl;
+        istringstream iss(input);
+        string cmd;
+        iss >> cmd;
+        
+        if (cmd == "quote") {
+            handleQuoteCommand(sockfd, input);
+        } else if (cmd == "buy") {
+            // handleBuyCommand(sockfd, input, username);
+        } else if (cmd == "sell") {
+            // handleSellCommand(sockfd, input, username);
+        } else if (cmd == "position") {
+            // handlePositionCommand(sockfd, username);
+        } else if (cmd == "exit"){
+           break;
         } else {
-            cerr << "Connection lost." << endl;
-            break;
+            continue;
         }
     }
 
     close(sockfd);
     return 0;
+}
+
+void handleQuoteCommand(int sockfd, const string& input) {
+    cout << "[Client] Sent a quote request to the main server." << endl;
+    send(sockfd, input.c_str(), input.length(), 0);
+
+    struct sockaddr_in client_addr;
+    socklen_t len = sizeof(client_addr);
+    getsockname(sockfd, (struct sockaddr*)&client_addr, &len);
+    int client_port = ntohs(client_addr.sin_port);
+
+    vector<char> buffer(BUFSIZE);
+    int bytes_received = recv(sockfd, buffer.data(), buffer.size() - 1, 0);
+    if (bytes_received <= 0) {
+        cerr << "[Client] Connection lost while receiving quote." << endl;
+        return;
+    }
+
+    buffer[bytes_received] = '\0';
+    string response(buffer.data());
+
+    cout << "[Client] Received the response from the main server using TCP over port " << client_port << "." << endl;
+    cout << response << endl;
+
+    cout << "——Start a new request——" << endl;
 }
