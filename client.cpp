@@ -103,7 +103,6 @@ int main() {
          << "<exit>" << endl;
     // === Command Loop ===
     while (true) {
-        cout << ">";
         string input;
         getline(cin, input);
 
@@ -116,7 +115,7 @@ int main() {
         if (cmd == "quote") {
             handleQuoteCommand(sockfd, input);
         } else if (cmd == "buy") {
-            // handleBuyCommand(sockfd, input, username);
+            handleBuyCommand(sockfd, input, username);
         } else if (cmd == "sell") {
             // handleSellCommand(sockfd, input, username);
         } else if (cmd == "position") {
@@ -151,8 +150,83 @@ void handleQuoteCommand(int sockfd, const string& input) {
     buffer[bytes_received] = '\0';
     string response(buffer.data());
 
-    cout << "[Client] Received the response from the main server using TCP over port " << client_port << "." << endl;
+    cout << "[Client] Received the response from the main server using TCP over port " 
+         << client_port << "." << endl;
     cout << response << endl;
 
     cout << "——Start a new request——" << endl;
 }
+
+void handleBuyCommand(int sockfd, const string& input, const string& username) {
+    istringstream iss(input);
+    string cmd, stock, shares;
+    iss >> cmd >> stock >> shares;
+
+    // struct sockaddr_in client_addr;
+    // socklen_t len = sizeof(client_addr);
+    // getsockname(sockfd, (struct sockaddr*)&client_addr, &len);
+    // int client_port = ntohs(client_addr.sin_port);
+
+    if (!(stock.empty() || shares.empty())) {
+        send(sockfd, input.c_str(), input.length(), 0);
+    } else {
+        cout << "[Client] Error: stock name/shares are required."
+             << "Please specify a stock name to buy." << endl;
+        return;
+    }
+
+
+    // Stock does not exist
+    vector<char> buffer(BUFSIZE);
+    int bytes_received = recv(sockfd, buffer.data(), buffer.size() - 1, 0);
+    if (bytes_received <= 0) return;
+    
+    
+    buffer[bytes_received] = '\0';
+    string response(buffer.data());
+
+    if (response.find("does not exist") != string::npos) {
+        cout << "[Client] Error: stock name does not exist. Please check again." << endl;
+        return;
+    }
+
+    // Stock exists, prompt for confirmation
+    istringstream quote_iss(response);
+    string quoted_stock;
+    double quoted_price;
+    quote_iss >> quoted_stock >> quoted_price;
+
+    while (true) {
+        cout << "[Client] " << quoted_stock << "’s current price is "
+             << quoted_price << ". Proceed to buy? (Y/N)" << endl;
+        string confirm;
+        cin >> confirm;
+        if (confirm == "Y") {
+            send(sockfd, confirm.c_str(), confirm.length(), 0);
+
+            // === Receive confirmation of success ===
+            int final_bytes = recv(sockfd, buffer.data(), buffer.size() - 1, 0);
+            if (final_bytes > 0) {
+                buffer[final_bytes] = '\0';
+                string final_reply(buffer.data());
+
+                // === Display confirmation and port info ===
+                struct sockaddr_in client_addr;
+                socklen_t len = sizeof(client_addr);
+                getsockname(sockfd, (struct sockaddr*)&client_addr, &len);
+                int client_port = ntohs(client_addr.sin_port);
+
+                cout << "[Client] Received the response from the main server using TCP over port "
+                    << client_port << "." << endl;
+                cout << final_reply << endl;
+                cout << "——Start a new request——" << endl;
+            }
+            break;
+        } else if (confirm == "N") {
+            send(sockfd, confirm.c_str(), confirm.length(), 0);
+            break;
+        }
+    }
+   
+}
+

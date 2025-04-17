@@ -14,16 +14,17 @@
 #include <map>
 #include <fstream>
 #include <sstream>
+#include <algorithm>
 
 using namespace std;
 
 #define PORT_UDP 42812
 #define LOCALHOST "127.0.0.1"
+#define MAXBUFLEN 1024
 
 struct OwnedStockInfo {
     int shares;
     double avg_price;
-    double total;
 };
 
 struct UserInfo {
@@ -49,6 +50,7 @@ map<string, UserInfo> loadPortfolioDatabase(const string& filename) {
         if (!(iss >> second_token)) {
             // Only one token → username line
             current_user = first_token;
+            transform(current_user.begin(), current_user.end(), current_user.begin(), ::tolower);
             userMap[current_user] = UserInfo();
             // cout << "[DEBUG] User: " << current_user << endl;
         } else {
@@ -58,7 +60,7 @@ map<string, UserInfo> loadPortfolioDatabase(const string& filename) {
             double avg_price;
 
             if (iss >> avg_price) {
-                userMap[current_user].portfolio[stock] = {shares, avg_price, shares * avg_price};
+                userMap[current_user].portfolio[stock] = {shares, avg_price};
                 // cout << "[DEBUG]   " << stock << ": " << shares << " shares @ $" << avg_price << endl;
             }
         }
@@ -91,28 +93,80 @@ int main() {
     auto portfolios = loadPortfolioDatabase("portfolios.txt");
 
 
-    // Loop for debugging
-    // for (map<string, UserInfo>::const_iterator it = portfolios.begin(); it != portfolios.end(); ++it) {
-    //     const string& username = it->first;
-    //     const UserInfo& userInfo = it->second;
-
-    //     cout << username << "'s portfolio:\n";
-    //     for (map<string, OwnedStockInfo>::const_iterator stock_it = userInfo.portfolio.begin(); stock_it != userInfo.portfolio.end(); ++stock_it) {
-    //         const string& stockName = stock_it->first;
-    //         const OwnedStockInfo& OwnedStockInfo = stock_it->second;
-
-    //         cout << "  " << stockName
-    //              << " - " << OwnedStockInfo.shares
-    //              << " shares @ $" << OwnedStockInfo.avg_price << "\n";
-    //     }
-    //     cout << endl;
-    // }
-
     cout << "[Server P] Booting up using UDP on port "
          << PORT_UDP << "." << endl;
 
     while (true) {
-        pause();
+        char buffer[MAXBUFLEN] = {0};
+        struct sockaddr_in mAddr;
+        socklen_t mAddrLen = sizeof(mAddr);
+
+        int bytes_received = recvfrom(udp_sockfd, buffer, sizeof(buffer) - 1, 0,
+                                    (struct sockaddr*)&mAddr, &mAddrLen);
+        if (bytes_received <= 0) continue;
+
+        buffer[bytes_received] = '\0';
+        string request(buffer);
+
+        istringstream iss(request);
+        string confirm, username, cmd, stock;
+        int shares;
+        double price;
+
+        iss >> confirm >> username >> cmd >> stock >> shares >> price;
+
+        if (confirm == "Y" && cmd == "buy") {
+            cout << "[Server P] Received a buy request from the client." << endl;
+
+            // Update user's portfolio
+            auto& user_stock = portfolios[username].portfolio[stock];
+            double total_cost = shares * price;
+
+            user_stock.avg_price = 
+                (user_stock.avg_price * user_stock.shares + total_cost) / 
+                (user_stock.shares + shares);
+
+            user_stock.shares += shares;
+
+            ostringstream response;
+            cout << "[Server P] Successfully bought " << shares
+                    << " shares of " << stock
+                    << " and updated " << username << "’s portfolio." << endl;
+                    
+            response << username << " successfully bought " << shares
+                    << " shares of " << stock
+                    << ".\n";
+
+            string reply = response.str();
+            sendto(udp_sockfd, reply.c_str(), reply.length(), 0,
+                (struct sockaddr*)&mAddr, mAddrLen);
+            // Loop for debugging
+            for (map<string, UserInfo>::const_iterator it = portfolios.begin(); it != portfolios.end(); ++it) {
+                const string& username = it->first;
+                const UserInfo& userInfo = it->second;
+
+                cout << username << "'s portfolio:\n";
+                for (map<string, OwnedStockInfo>::const_iterator stock_it = userInfo.portfolio.begin(); stock_it != userInfo.portfolio.end(); ++stock_it) {
+                    const string& stockName = stock_it->first;
+                    const OwnedStockInfo& OwnedStockInfo = stock_it->second;
+
+                    cout << "  " << stockName
+                        << " - " << OwnedStockInfo.shares
+                        << " shares @ $" << OwnedStockInfo.avg_price << "\n";
+                }
+                cout << endl;
+            }
+        }
+
+        else if (confirm == "Y" && cmd == "sell") {
+            // === TODO: Handle sell request ===
+            // Parse stock, shares, and price
+            // Check user has enough shares
+            // Adjust user portfolio
+            // Respond back with success or error message
+        }
+
+        // You may optionally handle "N" (denied) cases here if needed
     }
 
     close(udp_sockfd);

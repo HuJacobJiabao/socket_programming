@@ -102,7 +102,7 @@ int main() {
                 string stock;
                 iss >> stock;
                 if (!stock.empty()) {
-                    cout << "[Server Q] Received a quote request from the main server for stock" 
+                    cout << "[Server Q] Received a quote request from the main server for stock " 
                          << stock << ".\n";
                 } else {
                     cout << "[Server Q] Received a quote request from the main server." << endl;
@@ -119,7 +119,18 @@ int main() {
                     cout << "[Server Q] Returned all stock quotes." << endl;
                 }
 
-            } else {
+            } else if (cmd == "forward")  {
+                string stock;
+                iss >> stock;
+
+                auto it = quotes.find(stock);
+                cout << "[Server Q] Received a time forward request for " << stock
+                     << ", the current price of that stock is " 
+                     << it->second.prices[(it->second.currentIndex) % 10]
+                     << " at time " << it->second.currentIndex << ".\n";
+                it->second.currentIndex++;
+                         
+            } else{
                 string reply = "[Server Q] Invalid command. Only 'quote' supported.\n——Start a new request——";
                 sendto(udp_sockfd, reply.c_str(), reply.length(), 0,
                     (struct sockaddr*)&serverMAddr, addr_len);
@@ -147,7 +158,7 @@ string processQuoteCommand(const string& command, map<string, StockInfo>& quotes
             StockInfo& info = pair.second;
 
             if (!info.prices.empty()) {
-                double price = info.prices[info.currentIndex];
+                double price = info.prices[info.currentIndex % 10];
                 response << stockName << " " << price << "\n";
             }
         }
@@ -161,7 +172,7 @@ string processQuoteCommand(const string& command, map<string, StockInfo>& quotes
             if (info.prices.empty()) {
                 response << stock << " does not exist. Please try again.\n";
             } else {
-                double price = info.prices[info.currentIndex];
+                double price = info.prices[info.currentIndex % 10];
                 response << stock << " " << price << "\n";
             }
         }
