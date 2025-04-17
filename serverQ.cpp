@@ -124,18 +124,13 @@ int main() {
                 iss >> stock;
 
                 auto it = quotes.find(stock);
+                it->second.currentIndex++;
                 cout << "[Server Q] Received a time forward request for " << stock
                      << ", the current price of that stock is " 
                      << it->second.prices[(it->second.currentIndex) % 10]
                      << " at time " << it->second.currentIndex << ".\n";
-                it->second.currentIndex++;
-                         
-            } else{
-                string reply = "[Server Q] Invalid command. Only 'quote' supported.\n——Start a new request——";
-                sendto(udp_sockfd, reply.c_str(), reply.length(), 0,
-                    (struct sockaddr*)&serverMAddr, addr_len);
 
-                cout << "[Server Q] Rejected unsupported command: " << cmd << endl;
+                         
             }
         }
     }

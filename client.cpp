@@ -117,7 +117,7 @@ int main() {
         } else if (cmd == "buy") {
             handleBuyCommand(sockfd, input, username);
         } else if (cmd == "sell") {
-            // handleSellCommand(sockfd, input, username);
+            handleSellCommand(sockfd, input, username);
         } else if (cmd == "position") {
             // handlePositionCommand(sockfd, username);
         } else if (cmd == "exit"){
@@ -190,7 +190,7 @@ void handleBuyCommand(int sockfd, const string& input, const string& username) {
         return;
     }
 
-    // Stock exists, prompt for confirmation
+    // Stock exists and have enough shares, prompt for confirmation
     istringstream quote_iss(response);
     string quoted_stock;
     double quoted_price;
@@ -227,6 +227,72 @@ void handleBuyCommand(int sockfd, const string& input, const string& username) {
             break;
         }
     }
-   
 }
+
+void handleSellCommand(int sockfd, const string& input, const string& username) {
+    istringstream iss(input);
+    string cmd, stock, shares;
+    iss >> cmd >> stock >> shares;
+
+    if (stock.empty() || shares.empty()) {
+        cout << "[Client] Error: stock name/shares are required."
+             << " Please specify a stock name to sell." << endl;
+        return;
+    }
+
+    // Send sell command to server
+    send(sockfd, input.c_str(), input.length(), 0);
+
+    // Receive quote + ownership check
+    vector<char> buffer(BUFSIZE);
+    int bytes_received = recv(sockfd, buffer.data(), buffer.size() - 1, 0);
+    if (bytes_received <= 0) return;
+
+    buffer[bytes_received] = '\0';
+    string response(buffer.data());
+
+    // Handle error if stock doesn't exist or insufficient shares
+    if (response.find("does not exist") != string::npos) {
+        cout << "[Client] Error: stock name does not exist. Please check again." << endl;
+        return;
+    }
+    if (response.find("Insufficient shares") != string::npos) {
+        cout << "[Client] Error: " << username << " does not have enough shares of " 
+             << stock << " to sell. Please try again" << endl;
+        cout << "—Start a new request—" << endl;
+        return;
+    }
+
+    // Extract quote and prompt for confirmation
+    istringstream quote_iss(response);
+    string quoted_stock;
+    double quoted_price;
+    quote_iss >> quoted_stock >> quoted_price;
+
+    while (true) {
+        cout << "[Client] " << quoted_stock << "’s current price is "
+             << quoted_price << ". Proceed to sell? (Y/N)" << endl;
+        string confirm;
+        cin >> confirm;
+        if (confirm == "Y") {
+            send(sockfd, confirm.c_str(), confirm.length(), 0);
+
+            // Receive final confirmation
+            int final_bytes = recv(sockfd, buffer.data(), buffer.size() - 1, 0);
+            if (final_bytes > 0) {
+                buffer[final_bytes] = '\0';
+                string final_reply(buffer.data());
+
+                cout << final_reply << endl;
+                cout << "——Start a new request——" << endl;
+            }
+            break;
+        } else if (confirm == "N") {
+            send(sockfd, confirm.c_str(), confirm.length(), 0);
+            break;
+        }
+    }
+}
+
+
 

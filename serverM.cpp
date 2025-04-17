@@ -58,6 +58,12 @@ void handleBuyCommand(istringstream& iss,
                       struct sockaddr_in& serverPAddr,
                       struct sockaddr_in& serverQAddr,
                       const string& username);
+void handleSellCommand(istringstream& iss,
+                      int client_fd,
+                      int udp_sockfd,
+                      struct sockaddr_in& serverPAddr,
+                      struct sockaddr_in& serverQAddr,
+                      const string& username);
 void sendTimeShift(const string& stock, int udp_sockfd,
                    struct sockaddr_in& serverQAddr);
 
@@ -128,8 +134,6 @@ int main() {
                     string command(buffer);
 
                     dispatchClientCommand(command, client_fd, udp_sockfd, serverPAddr, serverQAddr, username);
-
-                    // handleClientCommand(command, client_fd, udp_sockfd, serverPAddr, serverQAddr, username);
                 }
             }
 
@@ -260,6 +264,8 @@ void dispatchClientCommand(const string& command,
         handleQuoteCommand(command, client_fd, udp_sockfd, serverQAddr, username);
     } else if (cmd == "buy") {
         handleBuyCommand(iss, client_fd, udp_sockfd, serverPAddr, serverQAddr, username);
+    } else if (cmd == "sell") {
+        handleSellCommand(iss, client_fd, udp_sockfd, serverPAddr, serverQAddr, username);
     } else {
         string msg = "[Server M] Invalid command.\n——Start a new request——";
         send(client_fd, msg.c_str(), msg.length(), 0);
@@ -311,6 +317,10 @@ void handleBuyCommand(istringstream& iss,
                       struct sockaddr_in& serverPAddr,
                       struct sockaddr_in& serverQAddr,
                       const string& username) {
+    cout << "[Server M] Received a buy request from member "
+         << username << " using TCP over port "
+         << PORT_TCP << "." << endl;
+
     string stock, shares;
     iss >> stock >> shares;
     if (stock.empty() || shares.empty()) return;
@@ -324,6 +334,8 @@ void handleBuyCommand(istringstream& iss,
     socklen_t qaddr_len = sizeof(serverQAddr);
     int bytes_received = recvfrom(udp_sockfd, buffer.data(), buffer.size() - 1, 0,
                                   (struct sockaddr*)&serverQAddr, &qaddr_len);
+    cout << "[Server M] Received quote response from server Q." << endl;
+
 
     if (bytes_received <= 0) return;
 
@@ -335,6 +347,9 @@ void handleBuyCommand(istringstream& iss,
         return;  // prevent hanging
     }
 
+    sendTimeShift(stock, udp_sockfd, serverQAddr);
+
+
     char confirm_buf[10] = {0};
     int confirm_bytes = recv(client_fd, confirm_buf, sizeof(confirm_buf) - 1, 0);
     if (confirm_bytes <= 0) return;
@@ -342,7 +357,6 @@ void handleBuyCommand(istringstream& iss,
     string confirm(confirm_buf);
     if (confirm == "Y") {
         cout << "[Server M] Buy approved." << endl;
-        sendTimeShift(stock, udp_sockfd, serverQAddr);
 
         istringstream quote_iss(quote_reply);
         string quoted_stock;
@@ -366,11 +380,111 @@ void handleBuyCommand(istringstream& iss,
         }
     } else {
         cout << "[Server M] Buy denied." << endl;
-        sendTimeShift(stock, udp_sockfd, serverQAddr);
-        string msg = "N";
+        string msg = "N buy";
         sendto(udp_sockfd, msg.c_str(), msg.length(), 0,
                (struct sockaddr*)&serverPAddr, sizeof(serverPAddr));
         cout << "[Server M] Forwarded the buy confirmation response to Server P." << endl;
+    }
+}
+
+void handleSellCommand(istringstream& iss,
+                       int client_fd,
+                       int udp_sockfd,
+                       struct sockaddr_in& serverPAddr,
+                       struct sockaddr_in& serverQAddr,
+                       const string& username) {
+    cout << "[Server M] Received a sell request from member "
+         << username << " using TCP over port "
+         << PORT_TCP << "." << endl;
+
+    string stock, shares;
+    iss >> stock >> shares;
+
+    if (stock.empty() || shares.empty()) return;
+    
+
+    // Get quote from Server Q
+    string quote_cmd = "quote " + stock;
+    sendto(udp_sockfd, quote_cmd.c_str(), quote_cmd.length(), 0,
+           (struct sockaddr*)&serverQAddr, sizeof(serverQAddr));
+    cout << "[Server M] Sent the quote request to server Q." << endl;
+
+    std::vector<char> buffer(BUFSIZE);
+    socklen_t qaddr_len = sizeof(serverQAddr);
+    int bytes_received = recvfrom(udp_sockfd, buffer.data(), buffer.size() - 1, 0,
+                                  (struct sockaddr*)&serverQAddr, &qaddr_len);
+    if (bytes_received <= 0) return;
+
+    cout << "[Server M] Received quote response from server Q." << endl;
+
+    buffer[bytes_received] = '\0';
+    string quote_reply(buffer.data());
+
+    if (quote_reply.find("does not exist") != string::npos) {
+        send(client_fd, quote_reply.c_str(), quote_reply.length(), 0);
+        return;
+    }
+
+    sendTimeShift(stock, udp_sockfd, serverQAddr);
+
+    // Ask Server P to check ownership
+    string check_cmd = "check " + username + " " + stock + " " + shares;
+    sendto(udp_sockfd, check_cmd.c_str(), check_cmd.length(), 0,
+           (struct sockaddr*)&serverPAddr, sizeof(serverPAddr));
+    cout << "[Server M] Forwarded the sell request to server P." << endl;
+
+    socklen_t paddr_len = sizeof(serverPAddr);
+    int check_bytes = recvfrom(udp_sockfd, buffer.data(), buffer.size() - 1, 0,
+                               (struct sockaddr*)&serverPAddr, &paddr_len);
+    if (check_bytes <= 0) return;
+
+    buffer[check_bytes] = '\0';
+    string check_response(buffer.data());
+
+    // If not enough shares, notify client and stop
+    if (check_response == "Insufficient shares") {
+        send(client_fd, check_response.c_str(), check_response.length(), 0);
+        return;
+    }
+
+    // Forward current price for confirmation
+    send(client_fd, quote_reply.c_str(), quote_reply.length(), 0);
+    cout << "[Server M] Forwarded the sell confirmation to the client." << endl;
+
+    // Receive confirmation from client
+    char confirm_buf[10] = {0};
+    int confirm_bytes = recv(client_fd, confirm_buf, sizeof(confirm_buf) - 1, 0);
+    if (confirm_bytes <= 0) return;
+
+    string confirm(confirm_buf);
+    if (confirm == "Y") {
+        // Parse current quote price
+        istringstream quote_iss(quote_reply);
+        string quoted_stock;
+        double quoted_price;
+        quote_iss >> quoted_stock >> quoted_price;
+
+        // Send final sell command to Server P
+        string sell_cmd = "Y " + username + " sell " + stock + " " + shares + " " + to_string(quoted_price);
+        sendto(udp_sockfd, sell_cmd.c_str(), sell_cmd.length(), 0,
+               (struct sockaddr*)&serverPAddr, sizeof(serverPAddr));
+        cout << "[Server M] Forwarded the sell confirmation to Server P." << endl;
+
+        // Receive sell result
+        int final_bytes = recvfrom(udp_sockfd, buffer.data(), buffer.size() - 1, 0,
+                                   (struct sockaddr*)&serverPAddr, &paddr_len);
+        if (final_bytes > 0) {
+            buffer[final_bytes] = '\0';
+            string reply(buffer.data());
+            send(client_fd, reply.c_str(), reply.length(), 0);
+            cout << "[Server M] Forwarded the sell result to the client." << endl;
+        }
+
+    } else {
+        string msg = "N sell";
+        sendto(udp_sockfd, msg.c_str(), msg.length(), 0,
+               (struct sockaddr*)&serverPAddr, sizeof(serverPAddr));
+        cout << "[Server M] Forwarded the sell confirmation response to Server P." << endl;
     }
 }
 
@@ -382,129 +496,3 @@ void sendTimeShift(const string& stock, int udp_sockfd,
             (struct sockaddr*)&serverQAddr, sizeof(serverQAddr));
 
 }
-
-
-// void handleClientCommand(const string& command,
-//                            int client_fd,
-//                            int udp_sockfd,
-//                            struct sockaddr_in& serverPAddr,
-//                            struct sockaddr_in& serverQAddr,
-//                            const string& username) {
-//     istringstream iss(command);
-//     string cmd;
-//     iss >> cmd;
-
-//     std::vector<char> buffer(BUFSIZE);
-//     socklen_t addr_len;
-
-//     if (cmd == "quote") {
-//         string stock;
-//         bool has_stock = bool(iss >> stock);
-
-//         // === Log incoming quote request from client ===
-//         if (has_stock) {
-//             cout << "[Server M] Received a quote request from " << username
-//                  << " for stock " << stock << ", using TCP over port " << PORT_TCP << "." << endl;
-//         } else {
-//             cout << "[Server M] Received a quote request from " << username
-//                  << ", using TCP over port " << PORT_TCP << "." << endl;
-//         }
-
-//         // === Forward request to Server Q ===
-//         sendto(udp_sockfd, command.c_str(), command.length(), 0,
-//                (struct sockaddr*)&serverQAddr, sizeof(serverQAddr));
-//         cout << "[Server M] Forwarded the quote request to server Q." << endl;
-
-//         // === Receive quote response from Server Q ===
-//         addr_len = sizeof(serverQAddr);
-//         int bytes_received = recvfrom(udp_sockfd, buffer.data(), buffer.size() - 1, 0,
-//                                       (struct sockaddr*)&serverQAddr, &addr_len);
-//         if (bytes_received > 0) {
-//             buffer[bytes_received] = '\0';
-
-//             if (has_stock) {
-//                 cout << "[Server M] Received the quote response from server Q for stock "
-//                      << stock << " using UDP over " << PORT_UDP << "." << endl;
-//             } else {
-//                 cout << "[Server M] Received the quote response from server Q using UDP over "
-//                      << PORT_UDP << "." << endl;
-//             }
-//             string reply(buffer.data());
-//             send(client_fd, reply.c_str(), reply.length(), 0);
-//             cout << "[Server M] Forwarded the quote response to the client." << endl;
-//             return;
-//         } else {
-//             // dbg
-//             return;
-//         }
-
-//     } else if (cmd == "buy") {
-//         // Prepend username
-//         string stock, shares;
-//         iss >> stock >> shares;
-
-//         // Send to ServerQ for quotes
-//         string quote_cmd = "quote " + stock;
-//         sendto(udp_sockfd, quote_cmd.c_str(), quote_cmd.length(), 0,
-//                (struct sockaddr*)&serverQAddr, sizeof(serverQAddr));
-//         cout << "[Server M] Sent the quote request to server Q." << endl;
-
-//         qaddr_len = sizeof(serverQAddr);
-//         int bytes_received = recvfrom(udp_sockfd, buffer.data(), buffer.size() - 1, 0,
-//                                       (struct sockaddr*)&serverQAddr, &qaddr_len);
-//         if (bytes_received <= 0) {
-//             // dbg
-//             return;
-//         }
-
-//         // Forward the quote to the client for confirmation
-//         buffer[bytes_received] = '\0';
-//         string quote_reply(buffer.data());
-//         send(client_fd, quote_reply.c_str(), quote_reply.length(), 0);
-//         cout << "[Server M] Sent the buy confirmation to the client." << endl;
-
-//         // Wait for confirmation from client
-//         char confirm_buf[10] = {0};
-//         int confirm_bytes = recv(client_fd, confirm_buf, sizeof(confirm_buf) - 1, 0);
-//         if (confirm_bytes <= 0) {
-//             // dbg
-//             return;
-//         }
-
-//         string confirm(confirm_buf);
-//         if (confirm == "Y") {
-//             cout << "[Server M] Buy approved." << endl;
-//             istringstream quote_iss(quote_reply);
-//             string quoted_stock;
-//             double quoted_price;
-//             quote_iss >> quoted_stock >> quoted_price;
-//             // Construct command with price
-//             string final_buy_cmd = username + " buy " + stock + " " + shares + " " + to_string(quoted_price);
-//             // Send final buy command to Server P
-//             cout << "[Server M] Forwarded the buy confirmation response to Server P." << endl;
-//             sendto(udp_sockfd, final_buy_cmd.c_str(), final_buy_cmd.length(), 0,
-//                 (struct sockaddr*)&serverPAddr, sizeof(serverPAddr));
-
-//             paddr_len = sizeof(serverPAddr);
-//             int final_bytes = recvfrom(udp_sockfd, buffer.data(), buffer.size() - 1, 0,
-//                                     (struct sockaddr*)&serverPAddr, &paddr_len);
-
-//             if (final_bytes > 0) {
-//                 buffer[final_bytes] = '\0';
-//                 string reply(buffer.data());
-//                 send(client_fd, reply.c_str(), reply.length(), 0);
-//             } else {
-//                 // dbg
-//                 return;
-//             }
-//         } else {
-//             // Buy request cancelled by user.
-//             cout << "[Server M] Buy denied." << endl;
-//             return;
-//         }
-
-//     } else {
-//         // Invalid command
-//         return;
-//     }
-// }

@@ -107,67 +107,111 @@ int main() {
 
         buffer[bytes_received] = '\0';
         string request(buffer);
-
         istringstream iss(request);
-        string confirm, username, cmd, stock;
-        int shares;
-        double price;
 
-        iss >> confirm >> username >> cmd >> stock >> shares >> price;
+        string confirm;
+        iss >> confirm;
 
-        if (confirm == "Y" && cmd == "buy") {
-            cout << "[Server P] Received a buy request from the client." << endl;
+        if (confirm == "Y") {
+            string username, cmd, stock;
+            int shares;
+            double price;
+            iss >> username >> cmd >> stock >> shares >> price;
+            string lower_username = username;
+            transform(lower_username.begin(), lower_username.end(), lower_username.begin(), ::tolower);
+            if (cmd == "buy") {
+                cout << "[Server P] Received a buy request from the client." << endl;
 
-            // Update user's portfolio
-            auto& user_stock = portfolios[username].portfolio[stock];
-            double total_cost = shares * price;
+                auto& user_stock = portfolios[lower_username].portfolio[stock];
+                double total_cost = shares * price;
 
-            user_stock.avg_price = 
-                (user_stock.avg_price * user_stock.shares + total_cost) / 
-                (user_stock.shares + shares);
+                user_stock.avg_price = 
+                    (user_stock.avg_price * user_stock.shares + total_cost) / 
+                    (user_stock.shares + shares);
+                user_stock.shares += shares;
 
-            user_stock.shares += shares;
-
-            ostringstream response;
-            cout << "[Server P] Successfully bought " << shares
+                cout << "[Server P] Successfully bought " << shares
                     << " shares of " << stock
                     << " and updated " << username << "’s portfolio." << endl;
-                    
-            response << username << " successfully bought " << shares
-                    << " shares of " << stock
-                    << ".\n";
 
-            string reply = response.str();
-            sendto(udp_sockfd, reply.c_str(), reply.length(), 0,
-                (struct sockaddr*)&mAddr, mAddrLen);
-            // Loop for debugging
-            for (map<string, UserInfo>::const_iterator it = portfolios.begin(); it != portfolios.end(); ++it) {
-                const string& username = it->first;
-                const UserInfo& userInfo = it->second;
+                ostringstream response;
+                response << username << " successfully bought " << shares
+                        << " shares of " << stock << ".\n";
 
-                cout << username << "'s portfolio:\n";
-                for (map<string, OwnedStockInfo>::const_iterator stock_it = userInfo.portfolio.begin(); stock_it != userInfo.portfolio.end(); ++stock_it) {
-                    const string& stockName = stock_it->first;
-                    const OwnedStockInfo& OwnedStockInfo = stock_it->second;
-
-                    cout << "  " << stockName
-                        << " - " << OwnedStockInfo.shares
-                        << " shares @ $" << OwnedStockInfo.avg_price << "\n";
-                }
-                cout << endl;
+                string reply = response.str();
+                sendto(udp_sockfd, reply.c_str(), reply.length(), 0,
+                    (struct sockaddr*)&mAddr, mAddrLen);
             }
+
+            else if (cmd == "sell") {
+                cout << "[Server P] User approves selling the stock." << endl;
+                auto& user_portfolio = portfolios[lower_username].portfolio;
+
+
+                user_portfolio[stock].shares -= shares;
+                if (user_portfolio[stock].shares == 0) {
+                    user_portfolio.erase(stock);
+                }
+
+                cout << "[Server P] Successfully sold " << shares
+                    << " shares of " << stock
+                    << " and updated " << username << "’s portfolio." << endl;
+
+                ostringstream response;
+                response << username << " successfully sold " << shares
+                        << " shares of " << stock << ".\n";
+
+                string reply = response.str();
+                sendto(udp_sockfd, reply.c_str(), reply.length(), 0,
+                    (struct sockaddr*)&mAddr, mAddrLen);
+            }
+        } else if (confirm == "check") {
+            cout << "[Server P] Received a sell request from the main server." << endl;
+            string username, stock;
+            int shares;
+            iss >> username >> stock >> shares;
+
+            string lower_username = username;
+            transform(lower_username.begin(), lower_username.end(), lower_username.begin(), ::tolower);
+
+            const auto& user_portfolio = portfolios[lower_username].portfolio;
+            if (user_portfolio.find(stock) != user_portfolio.end() &&
+                user_portfolio.at(stock).shares >= shares) {
+                string ok = "OK";
+                cout << "[Server P] Stock "
+                     << stock << " has sufficient shares in " 
+                     << username << "’s portfolio. Requesting users’ confirmation for selling stock."
+                     << endl;
+                sendto(udp_sockfd, ok.c_str(), ok.length(), 0,
+                    (struct sockaddr*)&mAddr, mAddrLen);
+            } else {
+                string err = "Insufficient shares";
+                cout << "[Server P] Stock "
+                     << stock << " does not have enough shares in " 
+                     << username << "’s portfolio. Unable to sell "
+                     << shares << " shares of " << stock << "."
+                     << endl;
+                sendto(udp_sockfd, err.c_str(), err.length(), 0,
+                    (struct sockaddr*)&mAddr, mAddrLen);
+            }
+        } else if (confirm == "N") {
+            string cmd;
+            iss >> cmd;
+            if (cmd == "sell") cout << "[Server P] Sell denied." << endl;
         }
 
-        else if (confirm == "Y" && cmd == "sell") {
-            // === TODO: Handle sell request ===
-            // Parse stock, shares, and price
-            // Check user has enough shares
-            // Adjust user portfolio
-            // Respond back with success or error message
+        // Debug print portfolios
+        for (const auto& user : portfolios) {
+            cout << user.first << "'s portfolio:\n";
+            for (const auto& entry : user.second.portfolio) {
+                cout << "  " << entry.first
+                    << " - " << entry.second.shares
+                    << " shares @ $" << entry.second.avg_price << "\n";
+            }
+            cout << endl;
         }
-
-        // You may optionally handle "N" (denied) cases here if needed
     }
+
 
     close(udp_sockfd);
     return 0;
