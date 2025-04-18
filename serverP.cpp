@@ -165,8 +165,9 @@ int main() {
                 sendto(udp_sockfd, reply.c_str(), reply.length(), 0,
                     (struct sockaddr*)&mAddr, mAddrLen);
             }
-        } else if (confirm == "check") {
+        }else if (confirm == "check") {
             cout << "[Server P] Received a sell request from the main server." << endl;
+
             string username, stock;
             int shares;
             iss >> username >> stock >> shares;
@@ -174,23 +175,34 @@ int main() {
             string lower_username = username;
             transform(lower_username.begin(), lower_username.end(), lower_username.begin(), ::tolower);
 
-            const auto& user_portfolio = portfolios[lower_username].portfolio;
+            auto user_it = portfolios.find(lower_username);
+            // Username not found
+            if (user_it == portfolios.end()) {
+                string err = "Insufficient shares";
+                cout << "[Server P] Stock "
+                    << stock << " does not have enough shares in " 
+                    << username << "’s portfolio. Unable to sell "
+                    << shares << " shares of " << stock << "." << endl;
+                sendto(udp_sockfd, err.c_str(), err.length(), 0,
+                    (struct sockaddr*)&mAddr, mAddrLen);
+            }
+
+            const auto& user_portfolio = user_it->second.portfolio;
             if (user_portfolio.find(stock) != user_portfolio.end() &&
                 user_portfolio.at(stock).shares >= shares) {
                 string ok = "OK";
                 cout << "[Server P] Stock "
-                     << stock << " has sufficient shares in " 
-                     << username << "’s portfolio. Requesting users’ confirmation for selling stock."
-                     << endl;
+                    << stock << " has sufficient shares in " 
+                    << username << "’s portfolio. Requesting users’ confirmation for selling stock."
+                    << endl;
                 sendto(udp_sockfd, ok.c_str(), ok.length(), 0,
                     (struct sockaddr*)&mAddr, mAddrLen);
             } else {
                 string err = "Insufficient shares";
                 cout << "[Server P] Stock "
-                     << stock << " does not have enough shares in " 
-                     << username << "’s portfolio. Unable to sell "
-                     << shares << " shares of " << stock << "."
-                     << endl;
+                    << stock << " does not have enough shares in " 
+                    << username << "’s portfolio. Unable to sell "
+                    << shares << " shares of " << stock << "." << endl;
                 sendto(udp_sockfd, err.c_str(), err.length(), 0,
                     (struct sockaddr*)&mAddr, mAddrLen);
             }
@@ -198,18 +210,55 @@ int main() {
             string cmd;
             iss >> cmd;
             if (cmd == "sell") cout << "[Server P] Sell denied." << endl;
+        } else if (confirm == "position") {
+            string username;
+            iss >> username;
+
+            string lower_username = username;
+            transform(lower_username.begin(), lower_username.end(), lower_username.begin(), ::tolower);
+
+            cout << "[Server P] Received a position request from the main server for Member: " << username << endl;
+
+            auto it = portfolios.find(lower_username);
+            // username not found
+            if (it == portfolios.end()) {
+                string err = "No portfolio found for user.";
+                sendto(udp_sockfd, err.c_str(), err.length(), 0,
+                    (struct sockaddr*)&mAddr, mAddrLen);
+                break;
+            }
+
+            const auto& portfolio = it->second.portfolio;
+            ostringstream response;
+            response << "stock shares avg_buy_price\n";
+
+            for (const auto& entry : portfolio) {
+                const string& stock = entry.first;
+                const OwnedStockInfo& info = entry.second;
+
+                if (info.shares == 0) continue;
+
+                response << stock << " " << info.shares << " " << info.avg_price << "\n";
+            }
+
+            string reply = response.str();
+            sendto(udp_sockfd, reply.c_str(), reply.length(), 0,
+                (struct sockaddr*)&mAddr, mAddrLen);
+
+            cout << "[Server P] Finished sending the gain and portfolio of " 
+                 << username << " to the main server." << endl;
         }
 
         // Debug print portfolios
-        for (const auto& user : portfolios) {
-            cout << user.first << "'s portfolio:\n";
-            for (const auto& entry : user.second.portfolio) {
-                cout << "  " << entry.first
-                    << " - " << entry.second.shares
-                    << " shares @ $" << entry.second.avg_price << "\n";
-            }
-            cout << endl;
-        }
+        // for (const auto& user : portfolios) {
+        //     cout << user.first << "'s portfolio:\n";
+        //     for (const auto& entry : user.second.portfolio) {
+        //         cout << "  " << entry.first
+        //             << " - " << entry.second.shares
+        //             << " shares @ $" << entry.second.avg_price << "\n";
+        //     }
+        //     cout << endl;
+        // }
     }
 
 

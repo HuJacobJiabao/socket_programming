@@ -119,7 +119,7 @@ int main() {
         } else if (cmd == "sell") {
             handleSellCommand(sockfd, input, username);
         } else if (cmd == "position") {
-            // handlePositionCommand(sockfd, username);
+            handlePositionCommand(sockfd, username);
         } else if (cmd == "exit"){
            break;
         } else {
@@ -294,5 +294,33 @@ void handleSellCommand(int sockfd, const string& input, const string& username) 
     }
 }
 
+void handlePositionCommand(int sockfd, const string& username) {
+    string cmd = "position";
+    send(sockfd, cmd.c_str(), cmd.length(), 0);
+    cout << "[Client] " 
+         << username 
+         << " sent a position request to the main server." << endl;
+
+    vector<char> buffer(BUFSIZE);
+    int bytes_received = recv(sockfd, buffer.data(), buffer.size() - 1, 0);
+    if (bytes_received <= 0) {
+        cerr << "[Client] Failed to receive portfolio information." << endl;
+        return;
+    }
+
+    buffer[bytes_received] = '\0';
+    string response(buffer.data());
+
+    // Get client TCP port
+    struct sockaddr_in client_addr;
+    socklen_t len = sizeof(client_addr);
+    getsockname(sockfd, (struct sockaddr*)&client_addr, &len);
+    int client_port = ntohs(client_addr.sin_port);
+
+    cout << "[Client] Received the response from the main server using TCP over port "
+         << client_port << "." << endl;
+    cout << response << endl;
+
+}
 
 

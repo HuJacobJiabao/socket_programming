@@ -1,25 +1,21 @@
+# Compiler and flags
 CXX = g++
 CXXFLAGS = -Wall -std=c++11
 
-SRCS = serverA.cpp serverM.cpp serverP.cpp serverQ.cpp client.cpp
-OBJS = $(SRCS:.cpp=)
+TARGETS = serverA serverM serverP serverQ client
 
-all: serverA serverP serverQ serverM client
 
-serverA: serverA.cpp
-	$(CXX) $(CXXFLAGS) -o serverA serverA.cpp
+SRCS = $(addsuffix .cpp, $(TARGETS))
 
-serverP: serverP.cpp
-	$(CXX) $(CXXFLAGS) -o serverP serverP.cpp
+OBJS = $(SRCS:.cpp=.o)
 
-serverQ: serverQ.cpp
-	$(CXX) $(CXXFLAGS) -o serverQ serverQ.cpp
+# Default target
+all: $(TARGETS)
 
-serverM: serverM.cpp
-	$(CXX) $(CXXFLAGS) -o serverM serverM.cpp
+%: %.cpp
+	$(CXX) $(CXXFLAGS) -o $@ $<
 
-client: client.cpp
-	$(CXX) $(CXXFLAGS) -o client client.cpp
-
+# Clean target
+.PHONY: clean all
 clean:
-	rm -f serverA serverM serverP serverQ client
+	rm -f $(TARGETS) *.o

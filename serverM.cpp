@@ -15,6 +15,8 @@
 #include <fstream>
 #include <sstream>
 #include <vector>
+#include <map>
+#include <iomanip>
 
 using namespace std;
 
@@ -27,46 +29,137 @@ using namespace std;
 #define BUFSIZE 8192
 #define LOCALHOST "127.0.0.1"
 
+// Function headers
+/* 
+ * Sets up a TCP socket for listening to client connections.
+ * @param sockfd: reference to the TCP socket file descriptor.
+ * @param addr: reference to a sockaddr_in struct to be configured.
+ */
 void setupTCPSocket(int& sockfd, struct sockaddr_in& addr);
+
+/* 
+ * Sets up a UDP socket for communicating with backend servers.
+ * @param sockfd: reference to the UDP socket file descriptor.
+ * @param addr: reference to a sockaddr_in struct to be configured.
+ */
 void setupUDPSocket(int& sockfd, struct sockaddr_in& addr);
+
+/* 
+ * Configures a sockaddr_in structure with localhost IP and the given port.
+ * @param addr: sockaddr_in structure to populate.
+ * @param port: port number to assign.
+ */
 void setupServer(struct sockaddr_in& addr, const int port);
+
+/* 
+ * Encrypts the input password using 3-offset for letters and digits.
+ * @param password: plain-text password.
+ * @return: encrypted password string.
+ */
 string encryptPassword(const string& password);
+
+/*
+ * Handles client login via Server A.
+ * @param client_fd: TCP socket file descriptor connected to client.
+ * @param udp_sockfd: UDP socket for backend communication.
+ * @param serverAAddr: address structure for serverA.
+ * @param logged_in: reference to a boolean that will be set true if login is successful.
+ * @param username: reference to store logged-in user's username.
+ * @return: false if client disconnected, true otherwise.
+ */
 bool handleLogin(int client_fd, int udp_sockfd,
                  struct sockaddr_in& serverAAddr,
                  bool& logged_in,
                  string& username);
-void handleClientCommand(const string& command,
-                           int client_fd,
-                           int udp_sockfd,
-                           struct sockaddr_in& serverPAddr,
-                           struct sockaddr_in& serverQAddr,
-                           const string& username);
+
+/*
+ * Determines the type of client command and routes it to the appropriate handler.
+ * @param command: entire client command string.
+ * @param client_fd: TCP socket connected to the client.
+ * @param udp_sockfd: UDP socket for backend communication.
+ * @param serverPAddr: sockaddr_in structure of Server P.
+ * @param serverQAddr: sockaddr_in structure of Server Q.
+ * @param username: current logged-in user.
+ */
 void dispatchClientCommand(const string& command,
                            int client_fd,
                            int udp_sockfd,
                            struct sockaddr_in& serverPAddr,
                            struct sockaddr_in& serverQAddr,
                            const string& username);
+
+/*
+ * Forwards a quote or quote <stock> command to serverQ and sends the response to the client.
+ * @param command: quote command from client.
+ * @param client_fd: TCP socket connected to the client.
+ * @param udp_sockfd: UDP socket to communicate with serverQ.
+ * @param serverQAddr: sockaddr_in of serverQ.
+ * @param username: current user's username.
+ */
 void handleQuoteCommand(const string& command,
                         int client_fd,
                         int udp_sockfd,
                         struct sockaddr_in& serverQAddr,
                         const string& username);
+
+/*
+ * Handles the buy command from client: fetches quote, confirms with client, then sends to serverP.
+ * @param iss: parsed istringstream of the command string.
+ * @param client_fd: TCP socket connected to client.
+ * @param udp_sockfd: UDP socket for backend.
+ * @param serverPAddr: sockaddr_in of serverP.
+ * @param serverQAddr: sockaddr_in of serverQ.
+ * @param username: current logged-in user.
+ */
 void handleBuyCommand(istringstream& iss,
                       int client_fd,
                       int udp_sockfd,
                       struct sockaddr_in& serverPAddr,
                       struct sockaddr_in& serverQAddr,
                       const string& username);
+
+/*
+ * Handles the sell command from client: fetches quote,
+ * verifies shares with serverP, confirms, and sends to serverP.
+ * @param iss: parsed istringstream of the command string.
+ * @param client_fd: TCP socket connected to client.
+ * @param udp_sockfd: UDP socket for backend.
+ * @param serverPAddr: sockaddr_in of serverP.
+ * @param serverQAddr: sockaddr_in of serverQ.
+ * @param username: current logged-in user.
+ */
 void handleSellCommand(istringstream& iss,
                       int client_fd,
                       int udp_sockfd,
                       struct sockaddr_in& serverPAddr,
                       struct sockaddr_in& serverQAddr,
                       const string& username);
+
+/*
+ * Sends a forward time instruction to serverQ to advance the stock price index.
+ * @param stock: stock symbol to shift.
+ * @param udp_sockfd: UDP socket for sending.
+ * @param serverQAddr: sockaddr_in of serverQ.
+ */
 void sendTimeShift(const string& stock, int udp_sockfd,
                    struct sockaddr_in& serverQAddr);
 
+/*
+ * Handles the position command: gathers user's portfolio from serverP and quote info from serverQ.
+ * Calculates profit/loss and returns summary to client.
+ * @param client_fd: TCP socket connected to client.
+ * @param udp_sockfd: UDP socket for backend communication.
+ * @param serverPAddr: sockaddr_in of serverP.
+ * @param serverQAddr: sockaddr_in of serverQ.
+ * @param username: current logged-in user.
+ */
+void handlePositionCommand(int client_fd,
+                      int udp_sockfd,
+                      struct sockaddr_in& serverPAddr,
+                      struct sockaddr_in& serverQAddr,
+                      const string& username);
+
+// Helper data structure
 struct Credentials {
     char username[51];
     char password[51];
@@ -82,6 +175,7 @@ int main() {
                        clientAddr;
     socklen_t addr_size = sizeof(clientAddr);
 
+    // Set up
     setupTCPSocket(tcp_sockfd, serverTCPAddr);
     setupUDPSocket(udp_sockfd, serverUDPAddr);
     setupServer(serverAAddr, PORT_A);
@@ -97,9 +191,10 @@ int main() {
             continue;
         }
 
+        // Use child process to handle client command
         pid_t pid = fork();
         if (pid < 0) {
-            cerr << "Fork failed.\n";
+            // cerr << "Fork failed.\n";
             close(client_fd);
             continue;
         }
@@ -107,7 +202,8 @@ int main() {
         if (pid == 0) {
             // Child process
             close(tcp_sockfd);
-            cout << "[Server M] New client process started (PID: " << getpid() << ").\n";
+            // DEBUG
+            // cout << "[Server M] New client process started (PID: " << getpid() << ").\n";
 
             bool logged_in = false;
 
@@ -117,7 +213,8 @@ int main() {
                     // Expect login credentials
                     bool active = handleLogin(client_fd, udp_sockfd, serverAAddr, logged_in, username);
                     if (!active) {
-                        cout << "[Server M - PID " << getpid() << "] Client disconnected during login.\n";
+                        // DEBUG
+                        // cout << "[Server M - PID " << getpid() << "] Client disconnected during login.\n";
                         break;
                     }
                     continue;
@@ -126,7 +223,7 @@ int main() {
                     char buffer[MAXBUFLEN] = {0};
                     int bytes_received = recv(client_fd, buffer, MAXBUFLEN - 1, 0);
                     if (bytes_received <= 0) {
-                        cout << "[Server M - PID " << getpid() << "] Client disconnected after login.\n";
+                        // cout << "[Server M - PID " << getpid() << "] Client disconnected after login.\n";
                         break;
                     }
 
@@ -235,9 +332,9 @@ bool handleLogin(int client_fd, int udp_sockfd,
     memset(cred.password, 0, sizeof(cred.password));
     strncpy(cred.password, encrypted.c_str(), sizeof(cred.password) - 1);
 
-    cout << "[Server M] Sent the authentication request to Server A." << endl;
     sendto(udp_sockfd, &cred, sizeof(cred), 0,
            (struct sockaddr*)&serverAAddr, sizeof(serverAAddr));
+    cout << "[Server M] Sent the authentication request to Server A." << endl;
 
     char reply[MAXBUFLEN] = {0};
     socklen_t len = sizeof(serverAAddr);
@@ -266,10 +363,13 @@ void dispatchClientCommand(const string& command,
         handleBuyCommand(iss, client_fd, udp_sockfd, serverPAddr, serverQAddr, username);
     } else if (cmd == "sell") {
         handleSellCommand(iss, client_fd, udp_sockfd, serverPAddr, serverQAddr, username);
-    } else {
-        string msg = "[Server M] Invalid command.\n——Start a new request——";
-        send(client_fd, msg.c_str(), msg.length(), 0);
+    } else if (cmd == "position") {
+        handlePositionCommand(client_fd, udp_sockfd, serverPAddr, serverQAddr, username);
     }
+    // } else {
+    //     string msg = "[Server M] Invalid command.\n——Start a new request——";
+    //     send(client_fd, msg.c_str(), msg.length(), 0);
+    // }
 }
 
 void handleQuoteCommand(const string& command,
@@ -294,7 +394,7 @@ void handleQuoteCommand(const string& command,
            (struct sockaddr*)&serverQAddr, sizeof(serverQAddr));
     cout << "[Server M] Forwarded the quote request to server Q." << endl;
 
-    std::vector<char> buffer(BUFSIZE);
+    vector<char> buffer(BUFSIZE);
     socklen_t addr_len = sizeof(serverQAddr);
     int bytes_received = recvfrom(udp_sockfd, buffer.data(), buffer.size() - 1, 0,
                                   (struct sockaddr*)&serverQAddr, &addr_len);
@@ -330,7 +430,7 @@ void handleBuyCommand(istringstream& iss,
            (struct sockaddr*)&serverQAddr, sizeof(serverQAddr));
     cout << "[Server M] Sent the quote request to server Q." << endl;
 
-    std::vector<char> buffer(BUFSIZE);
+    vector<char> buffer(BUFSIZE);
     socklen_t qaddr_len = sizeof(serverQAddr);
     int bytes_received = recvfrom(udp_sockfd, buffer.data(), buffer.size() - 1, 0,
                                   (struct sockaddr*)&serverQAddr, &qaddr_len);
@@ -346,8 +446,6 @@ void handleBuyCommand(istringstream& iss,
     if (quote_reply.find("does not exist") != string::npos) {
         return;  // prevent hanging
     }
-
-    sendTimeShift(stock, udp_sockfd, serverQAddr);
 
 
     char confirm_buf[10] = {0};
@@ -368,6 +466,8 @@ void handleBuyCommand(istringstream& iss,
                (struct sockaddr*)&serverPAddr, sizeof(serverPAddr));
         cout << "[Server M] Forwarded the buy confirmation response to Server P." << endl;
 
+        sendTimeShift(stock, udp_sockfd, serverQAddr);
+
         socklen_t paddr_len = sizeof(serverPAddr);
         int final_bytes = recvfrom(udp_sockfd, buffer.data(), buffer.size() - 1, 0,
                                    (struct sockaddr*)&serverPAddr, &paddr_len);
@@ -384,6 +484,9 @@ void handleBuyCommand(istringstream& iss,
         sendto(udp_sockfd, msg.c_str(), msg.length(), 0,
                (struct sockaddr*)&serverPAddr, sizeof(serverPAddr));
         cout << "[Server M] Forwarded the buy confirmation response to Server P." << endl;
+
+        sendTimeShift(stock, udp_sockfd, serverQAddr);
+
     }
 }
 
@@ -409,7 +512,7 @@ void handleSellCommand(istringstream& iss,
            (struct sockaddr*)&serverQAddr, sizeof(serverQAddr));
     cout << "[Server M] Sent the quote request to server Q." << endl;
 
-    std::vector<char> buffer(BUFSIZE);
+    vector<char> buffer(BUFSIZE);
     socklen_t qaddr_len = sizeof(serverQAddr);
     int bytes_received = recvfrom(udp_sockfd, buffer.data(), buffer.size() - 1, 0,
                                   (struct sockaddr*)&serverQAddr, &qaddr_len);
@@ -424,8 +527,6 @@ void handleSellCommand(istringstream& iss,
         send(client_fd, quote_reply.c_str(), quote_reply.length(), 0);
         return;
     }
-
-    sendTimeShift(stock, udp_sockfd, serverQAddr);
 
     // Ask Server P to check ownership
     string check_cmd = "check " + username + " " + stock + " " + shares;
@@ -444,6 +545,7 @@ void handleSellCommand(istringstream& iss,
     // If not enough shares, notify client and stop
     if (check_response == "Insufficient shares") {
         send(client_fd, check_response.c_str(), check_response.length(), 0);
+        sendTimeShift(stock, udp_sockfd, serverQAddr);
         return;
     }
 
@@ -470,6 +572,8 @@ void handleSellCommand(istringstream& iss,
                (struct sockaddr*)&serverPAddr, sizeof(serverPAddr));
         cout << "[Server M] Forwarded the sell confirmation to Server P." << endl;
 
+        sendTimeShift(stock, udp_sockfd, serverQAddr);
+
         // Receive sell result
         int final_bytes = recvfrom(udp_sockfd, buffer.data(), buffer.size() - 1, 0,
                                    (struct sockaddr*)&serverPAddr, &paddr_len);
@@ -485,6 +589,9 @@ void handleSellCommand(istringstream& iss,
         sendto(udp_sockfd, msg.c_str(), msg.length(), 0,
                (struct sockaddr*)&serverPAddr, sizeof(serverPAddr));
         cout << "[Server M] Forwarded the sell confirmation response to Server P." << endl;
+
+        sendTimeShift(stock, udp_sockfd, serverQAddr);
+
     }
 }
 
@@ -495,4 +602,83 @@ void sendTimeShift(const string& stock, int udp_sockfd,
     sendto(udp_sockfd, msg.c_str(), msg.length(), 0, 
             (struct sockaddr*)&serverQAddr, sizeof(serverQAddr));
 
+}
+
+void handlePositionCommand(int client_fd,
+                           int udp_sockfd,
+                           struct sockaddr_in& serverPAddr,
+                           struct sockaddr_in& serverQAddr,
+                           const string& username) {
+    cout << "[Server M] Received a position request from Member "
+         << username << " using TCP over port " << PORT_TCP << "." << endl;
+
+    // Request all quotes from Server Q
+    string quote_cmd = "quote";
+    sendto(udp_sockfd, quote_cmd.c_str(), quote_cmd.length(), 0,
+           (struct sockaddr*)&serverQAddr, sizeof(serverQAddr));
+    cout << "[Server M] Sent quote request to server Q." << endl;
+
+    vector<char> quote_buf(BUFSIZE);
+    socklen_t qaddr_len = sizeof(serverQAddr);
+    int quote_bytes = recvfrom(udp_sockfd, quote_buf.data(), quote_buf.size() - 1, 0,
+                               (struct sockaddr*)&serverQAddr, &qaddr_len);
+    if (quote_bytes <= 0) return;
+    quote_buf[quote_bytes] = '\0';
+    string quote_reply(quote_buf.data());
+    cout << "[Server M] Received quote response from server Q." << endl;
+
+    // Parse quotes into a map
+    map<string, double> quote_prices;
+    istringstream quote_stream(quote_reply);
+    string stock;
+    double price;
+    while (quote_stream >> stock >> price) {
+        quote_prices[stock] = price;
+    }
+
+    // Request portfolio from Server P
+    string pos_cmd = "position " + username;
+    sendto(udp_sockfd, pos_cmd.c_str(), pos_cmd.length(), 0,
+           (struct sockaddr*)&serverPAddr, sizeof(serverPAddr));
+    cout << "[Server M] Forwarded the position request to server P." << endl;
+
+    vector<char> port_buf(BUFSIZE);
+    socklen_t paddr_len = sizeof(serverPAddr);
+    int port_bytes = recvfrom(udp_sockfd, port_buf.data(), port_buf.size() - 1, 0,
+                              (struct sockaddr*)&serverPAddr, &paddr_len);
+    if (port_bytes <= 0) return;
+    port_buf[port_bytes] = '\0';
+    string portfolio(port_buf.data());
+    cout << "[Server M] Received user’s portfolio from server P using UDP over " << PORT_UDP << "." << endl;
+
+    // Parse portfolio and compute profit
+    istringstream port_stream(portfolio);
+    string header;
+    port_stream >> header; // skip "stock"
+    port_stream >> header; // skip "shares"
+    port_stream >> header; // skip "avg_buy_price"
+
+    ostringstream reply;
+    reply << fixed << setprecision(2);
+    reply << "stock shares avg_buy_price\n";
+    double total_profit = 0.0;
+    while (port_stream >> stock) {
+        int shares;
+        double avg_price;
+        if (!(port_stream >> shares >> avg_price)) break;
+
+        reply << stock << " " << shares << " " << avg_price << "\n";
+
+        if (quote_prices.find(stock) != quote_prices.end()) {
+            double current_price = quote_prices[stock];
+            total_profit += shares * (current_price - avg_price);
+        }
+    }
+
+    reply << username << "’s current profit is " << total_profit << ".";
+    string result = reply.str();
+
+    // Send result to client
+    send(client_fd, result.c_str(), result.length(), 0);
+    cout << "[Server M] Forwarded the user’s portfolio and gain to the client." << endl;
 }
