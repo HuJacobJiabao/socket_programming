@@ -27,6 +27,16 @@ struct StockInfo {
     int currentIndex = 0;
 };
 
+/**
+ * Processes a quote command and returns the corresponding stock price information.
+ * If the command is "quote", it returns the current price of all stocks.
+ * If the command is "quote <stock_name>", it returns the current price of the specified stock.
+ * If the stock does not exist, an appropriate error message is returned.
+ *
+ * @param command The input command from the client, such as "quote" or "quote S1".
+ * @param quotes A reference to the map containing stock information and current time index.
+ * @return A string containing the stock price(s) or an error message.
+ */
 string processQuoteCommand(const string& command, map<string, StockInfo>& quotes);
 
 map<string, StockInfo> loadQuoteDatabase(const string& filename) {
@@ -59,7 +69,7 @@ int main() {
 
     udp_sockfd = socket(AF_INET, SOCK_DGRAM, 0);
     if (udp_sockfd < 0) {
-        cerr << "creating UDP socket for server Q failed" << endl;
+        // cerr << "creating UDP socket for server Q failed" << endl;
         return 1;
     }
 
@@ -69,7 +79,7 @@ int main() {
     serverAddr.sin_port = htons(PORT_UDP);
 
     if (bind(udp_sockfd, (struct sockaddr*)&serverAddr, sizeof(serverAddr)) < 0) {
-        cerr << "bind for udp failed" << endl;
+        // cerr << "bind for udp failed" << endl;
         return 1;
     }
 

@@ -28,9 +28,46 @@ struct Credentials {
     char password[51];
 };
 
+/**
+ * Handles a quote command from the client.
+ * Sends a quote request (with or without a specific stock) to the main server
+ * and displays the received stock price(s) or error message(s).
+ * 
+ * @param sockfd The TCP socket file descriptor used to communicate with the main server.
+ * @param input The full input command entered by the user (e.g., "quote" or "quote S1").
+ */
 void handleQuoteCommand(int sockfd, const string& input);
+
+/**
+ * Handles a buy command from the client.
+ * Sends a buy request to the main server, prompts for confirmation after receiving the quote,
+ * and displays the result of the buy operation.
+ * 
+ * @param sockfd The TCP socket file descriptor used to communicate with the main server.
+ * @param input The full input command entered by the user (e.g., "buy S1 100").
+ * @param username The username of the logged-in client (used in confirmation messages).
+ */
 void handleBuyCommand(int sockfd, const string& input, const string& username);
+
+/**
+ * Handles a sell command from the client.
+ * Sends a sell request to the main server, prompts for confirmation after validating ownership,
+ * and displays the result of the sell operation.
+ * 
+ * @param sockfd The TCP socket file descriptor used to communicate with the main server.
+ * @param input The full input command entered by the user (e.g., "sell S1 50").
+ * @param username The username of the logged-in client (used in confirmation messages).
+ */
 void handleSellCommand(int sockfd, const string& input, const string& username);
+
+/**
+ * Handles a position request command from the client.
+ * Sends a request to the main server to retrieve the client’s portfolio and gain/loss summary,
+ * then displays it in a formatted way.
+ * 
+ * @param sockfd The TCP socket file descriptor used to communicate with the main server.
+ * @param username The username of the logged-in client.
+ */
 void handlePositionCommand(int sockfd, const string& username);
 
 int main() {
@@ -143,7 +180,7 @@ void handleQuoteCommand(int sockfd, const string& input) {
     vector<char> buffer(BUFSIZE);
     int bytes_received = recv(sockfd, buffer.data(), buffer.size() - 1, 0);
     if (bytes_received <= 0) {
-        cerr << "[Client] Connection lost while receiving quote." << endl;
+        // cerr << "[Client] Connection lost while receiving quote." << endl;
         return;
     }
 
@@ -304,7 +341,7 @@ void handlePositionCommand(int sockfd, const string& username) {
     vector<char> buffer(BUFSIZE);
     int bytes_received = recv(sockfd, buffer.data(), buffer.size() - 1, 0);
     if (bytes_received <= 0) {
-        cerr << "[Client] Failed to receive portfolio information." << endl;
+        // cerr << "[Client] Failed to receive portfolio information." << endl;
         return;
     }
 

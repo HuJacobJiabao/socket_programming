@@ -31,7 +31,17 @@ struct UserInfo {
     map<string, OwnedStockInfo> portfolio;
 };
 
-// Return all users with their portfolios
+/**
+ * Loads the portfolio database from the given file and returns a map of user portfolios.
+ * Each user has a set of owned stocks with associated share counts and average prices.
+ *
+ * The file is expected to have the following format:
+ * - A line with a username indicates the start of a new user's portfolio.
+ * - The subsequent lines contain stock data in the form: <stock_name> <shares> <avg_price>
+ *
+ * @param filename The path to the portfolio database file (e.g., "portfolios.txt").
+ * @return A map where the key is the username (in lowercase) and the value is their UserInfo.
+ */
 map<string, UserInfo> loadPortfolioDatabase(const string& filename) {
     map<string, UserInfo> userMap;
     ifstream infile(filename);
@@ -75,7 +85,7 @@ int main() {
 
     udp_sockfd = socket(AF_INET, SOCK_DGRAM, 0);
     if (udp_sockfd < 0) {
-        cerr << "creating UDP socket for server P failed" << endl;
+        // cerr << "creating UDP socket for server P failed" << endl;
         return 1;
     }
 
@@ -85,7 +95,7 @@ int main() {
     serverAddr.sin_port = htons(PORT_UDP);
 
     if (bind(udp_sockfd, (struct sockaddr*)&serverAddr, sizeof(serverAddr)) < 0) {
-        cerr << "bind for udp failed" << endl;
+        // cerr << "bind for udp failed" << endl;
         return 1;
     }
 
@@ -112,6 +122,7 @@ int main() {
         iss >> confirm;
 
         if (confirm == "Y") {
+            // Confirm "Y"
             string username, cmd, stock;
             int shares;
             double price;
@@ -140,9 +151,7 @@ int main() {
                 string reply = response.str();
                 sendto(udp_sockfd, reply.c_str(), reply.length(), 0,
                     (struct sockaddr*)&mAddr, mAddrLen);
-            }
-
-            else if (cmd == "sell") {
+            } else if (cmd == "sell") {
                 cout << "[Server P] User approves selling the stock." << endl;
                 auto& user_portfolio = portfolios[lower_username].portfolio;
 
@@ -164,7 +173,8 @@ int main() {
                 sendto(udp_sockfd, reply.c_str(), reply.length(), 0,
                     (struct sockaddr*)&mAddr, mAddrLen);
             }
-        }else if (confirm == "check") {
+        } else if (confirm == "check") {
+            // check if the user has enough shares
             cout << "[Server P] Received a sell request from the main server." << endl;
 
             string username, stock;
@@ -210,6 +220,7 @@ int main() {
             iss >> cmd;
             if (cmd == "sell") cout << "[Server P] Sell denied." << endl;
         } else if (confirm == "position") {
+            // handle postion request
             string username;
             iss >> username;
 
@@ -219,7 +230,7 @@ int main() {
             cout << "[Server P] Received a position request from the main server for Member: " << username << endl;
 
             auto it = portfolios.find(lower_username);
-            // TODO username not found
+            // username not found
             if (it == portfolios.end()) {
                 ostringstream response;
                 response << "stock shares avg_buy_price\n";

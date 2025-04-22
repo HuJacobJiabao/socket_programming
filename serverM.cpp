@@ -188,7 +188,7 @@ int main() {
     while (true) {
         client_fd = accept(tcp_sockfd, (struct sockaddr*)&clientAddr, &addr_size);
         if (client_fd < 0) {
-            cerr << "Accept failed.\n";
+            // cerr << "Accept failed.\n";
             continue;
         }
 
@@ -253,14 +253,14 @@ void setupTCPSocket(int& sockfd, struct sockaddr_in& addr) {
     // Create TCP socket
     sockfd = socket(AF_INET, SOCK_STREAM, 0);
     if (sockfd < 0) {
-        cerr << "TCP socket creation failed.\n";
+        // cerr << "TCP socket creation failed.\n";
         exit(1);
     }
 
     // Allow address reuse to avoid bind errors on restart
     int opt = 1;
     if (setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) < 0) {
-        cerr << "setsockopt(SO_REUSEADDR) failed.\n";
+        // cerr << "setsockopt(SO_REUSEADDR) failed.\n";
         exit(1);
     }
 
@@ -272,13 +272,13 @@ void setupTCPSocket(int& sockfd, struct sockaddr_in& addr) {
 
     // Bind to the specified address and port
     if (bind(sockfd, (struct sockaddr*)&addr, sizeof(addr)) < 0) {
-        cerr << "TCP bind failed.\n";
+        // cerr << "TCP bind failed.\n";
         exit(1);
     }
 
     // Start listening
     if (listen(sockfd, 5) < 0) {
-        cerr << "Listen failed.\n";
+        // cerr << "Listen failed.\n";
         exit(1);
     }
 }
@@ -286,7 +286,7 @@ void setupTCPSocket(int& sockfd, struct sockaddr_in& addr) {
 void setupUDPSocket(int& sockfd, struct sockaddr_in& addr) {
     sockfd = socket(AF_INET, SOCK_DGRAM, 0);
     if (sockfd < 0) {
-        cerr << "UDP socket creation failed.\n";
+        // cerr << "UDP socket creation failed.\n";
         exit(1);
     }
 
@@ -296,7 +296,7 @@ void setupUDPSocket(int& sockfd, struct sockaddr_in& addr) {
     addr.sin_addr.s_addr = inet_addr(LOCALHOST);
 
     if (bind(sockfd, (struct sockaddr*)&addr, sizeof(addr)) < 0) {
-        cerr << "UDP bind failed." << endl;
+        // cerr << "UDP bind failed." << endl;
         exit(1);
     }
 }
@@ -361,6 +361,7 @@ bool handleLogin(int client_fd, int udp_sockfd,
     logged_in = string(reply) == "Login successful";
     return true;
 }
+
 void dispatchClientCommand(const string& command,
                            int client_fd,
                            int udp_sockfd,

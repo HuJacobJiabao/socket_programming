@@ -27,6 +27,13 @@ struct Credentials {
     char password[51];
 };
 
+/**
+ * Loads the member credentials (username and password) from a file into a map.
+ * Each line in the file should contain a username followed by its encrypted password, separated by whitespace.
+ *
+ * @param filename The name of the file containing member credentials (e.g., "members.txt").
+ * @return A map where the key is the username (in lowercase) and the value is the corresponding password.
+ */
 map<string, string> loadMemberDatabase(const string& filename);
 string toLower(const string& s);
 
@@ -37,7 +44,7 @@ int main() {
 
     udp_sockfd = socket(AF_INET, SOCK_DGRAM, 0);
     if (udp_sockfd < 0) {
-        cerr << "Creating UDP socket for server A failed." << endl;
+        // cerr << "Creating UDP socket for server A failed." << endl;
         return 1; 
     }
 
@@ -47,7 +54,7 @@ int main() {
     serverAddr.sin_port = htons(PORT_UDP);
 
     if (bind(udp_sockfd, (struct sockaddr*)&serverAddr, sizeof(serverAddr)) < 0) {
-        cerr << "Bind for UDP failed." << endl;
+        // cerr << "Bind for UDP failed." << endl;
         return 1;
     }
 
@@ -62,7 +69,7 @@ int main() {
         int bytes_received = recvfrom(udp_sockfd, &cred, sizeof(cred), 0,
                                       (struct sockaddr*)&clientAddr, &addr_len);
         if (bytes_received <= 0) {
-            cerr << "[Server A] Failed to receive credentials." << endl;
+            // cerr << "[Server A] Failed to receive credentials." << endl;
             continue;
         }
 
