@@ -40,7 +40,7 @@ int main() {
     // Create TCP socket
     sockfd = socket(AF_INET, SOCK_STREAM, 0);
     if (sockfd < 0) {
-        cerr << "Failed to create TCP socket." << endl;
+        // cerr << "Failed to create TCP socket." << endl;
         return 1;
     }
 
@@ -50,7 +50,7 @@ int main() {
     inet_pton(AF_INET, LOCALHOST, &serverMaddr.sin_addr);
 
     if (connect(sockfd, (struct sockaddr*) &serverMaddr, sizeof(serverMaddr)) < 0) {
-        cerr << "Connection to serverM failed." << endl;
+        // cerr << "Connection to serverM failed." << endl;
         return 1;
     }
 
@@ -86,7 +86,7 @@ int main() {
                 cout << "[Client] The credentials are incorrect. Please try agian." << endl;
             }
         } else {
-            cerr << "Connection lost during login." << endl;
+            // cerr << "Connection lost during login." << endl;
             close(sockfd);
             return 1;
         }
@@ -94,15 +94,15 @@ int main() {
 
     }
 
-    cout << "[Client] Please enter the command:\n"
-         << "<quote>\n"
-         << "<quote <stock name>>\n"
-         << "<buy <stock name> <number of shares>>\n"
-         << "<sell <stock name> <number of shares>>\n"
-         << "<position>\n"
-         << "<exit>" << endl;
     // === Command Loop ===
     while (true) {
+        cout << "[Client] Please enter the command:\n"
+            << "<quote>\n"
+            << "<quote <stock name>>\n"
+            << "<buy <stock name> <number of shares>>\n"
+            << "<sell <stock name> <number of shares>>\n"
+            << "<position>\n"
+            << "<exit>" << endl;
         string input;
         getline(cin, input);
 
@@ -200,7 +200,7 @@ void handleBuyCommand(int sockfd, const string& input, const string& username) {
         cout << "[Client] " << quoted_stock << "’s current price is "
              << quoted_price << ". Proceed to buy? (Y/N)" << endl;
         string confirm;
-        cin >> confirm;
+        getline(cin, confirm);
         if (confirm == "Y") {
             send(sockfd, confirm.c_str(), confirm.length(), 0);
 
@@ -273,7 +273,7 @@ void handleSellCommand(int sockfd, const string& input, const string& username) 
         cout << "[Client] " << quoted_stock << "’s current price is "
              << quoted_price << ". Proceed to sell? (Y/N)" << endl;
         string confirm;
-        cin >> confirm;
+        getline(cin, confirm);
         if (confirm == "Y") {
             send(sockfd, confirm.c_str(), confirm.length(), 0);
 
@@ -283,7 +283,7 @@ void handleSellCommand(int sockfd, const string& input, const string& username) 
                 buffer[final_bytes] = '\0';
                 string final_reply(buffer.data());
 
-                cout << final_reply << endl;
+                cout << "[Client] " << final_reply << endl;
                 cout << "——Start a new request——" << endl;
             }
             break;

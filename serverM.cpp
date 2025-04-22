@@ -17,6 +17,7 @@
 #include <vector>
 #include <map>
 #include <iomanip>
+#include <algorithm>
 
 using namespace std;
 
@@ -249,22 +250,33 @@ int main() {
 }
 
 void setupTCPSocket(int& sockfd, struct sockaddr_in& addr) {
+    // Create TCP socket
     sockfd = socket(AF_INET, SOCK_STREAM, 0);
     if (sockfd < 0) {
         cerr << "TCP socket creation failed.\n";
         exit(1);
     }
 
+    // Allow address reuse to avoid bind errors on restart
+    int opt = 1;
+    if (setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) < 0) {
+        cerr << "setsockopt(SO_REUSEADDR) failed.\n";
+        exit(1);
+    }
+
+    // Configure address
     memset(&addr, 0, sizeof(addr));
     addr.sin_family = AF_INET;
     addr.sin_port = htons(PORT_TCP);
     inet_pton(AF_INET, LOCALHOST, &addr.sin_addr);
 
+    // Bind to the specified address and port
     if (bind(sockfd, (struct sockaddr*)&addr, sizeof(addr)) < 0) {
         cerr << "TCP bind failed.\n";
         exit(1);
     }
 
+    // Start listening
     if (listen(sockfd, 5) < 0) {
         cerr << "Listen failed.\n";
         exit(1);
@@ -325,6 +337,8 @@ bool handleLogin(int client_fd, int udp_sockfd,
     }
 
     username = string(cred.username);
+    transform(username.begin(), username.end(), username.begin(), ::tolower);
+
     string password(cred.password);
     cout << "[Server M] Received username " << username << " and Password ****." << endl;
 
@@ -403,8 +417,15 @@ void handleQuoteCommand(const string& command,
         buffer[bytes_received] = '\0';
         string reply(buffer.data());
 
-        cout << "[Server M] Received the quote response from server Q using UDP over "
-             << PORT_UDP << "." << endl;
+        if (has_stock) {
+            cout << "[Server M] Received the quote response from server Q for stock "
+                 << stock << " using UDP over "
+                 << PORT_UDP << "." << endl;
+        } else {
+            cout << "[Server M] Received the quote response from server Q using UDP over "
+                 << PORT_UDP << "." << endl;
+        }
+        
         cout << "[Server M] Forwarded the quote response to the client." << endl;
 
         send(client_fd, reply.c_str(), reply.length(), 0);
@@ -442,11 +463,11 @@ void handleBuyCommand(istringstream& iss,
     buffer[bytes_received] = '\0';
     string quote_reply(buffer.data());
     send(client_fd, quote_reply.c_str(), quote_reply.length(), 0);
-    cout << "[Server M] Sent the buy confirmation to the client." << endl;
+
     if (quote_reply.find("does not exist") != string::npos) {
         return;  // prevent hanging
     }
-
+    cout << "[Server M] Sent the buy confirmation to the client." << endl;
 
     char confirm_buf[10] = {0};
     int confirm_bytes = recv(client_fd, confirm_buf, sizeof(confirm_buf) - 1, 0);
@@ -552,7 +573,7 @@ void handleSellCommand(istringstream& iss,
     // Forward current price for confirmation
     send(client_fd, quote_reply.c_str(), quote_reply.length(), 0);
     cout << "[Server M] Forwarded the sell confirmation to the client." << endl;
-
+    
     // Receive confirmation from client
     char confirm_buf[10] = {0};
     int confirm_bytes = recv(client_fd, confirm_buf, sizeof(confirm_buf) - 1, 0);
@@ -570,7 +591,7 @@ void handleSellCommand(istringstream& iss,
         string sell_cmd = "Y " + username + " sell " + stock + " " + shares + " " + to_string(quoted_price);
         sendto(udp_sockfd, sell_cmd.c_str(), sell_cmd.length(), 0,
                (struct sockaddr*)&serverPAddr, sizeof(serverPAddr));
-        cout << "[Server M] Forwarded the sell confirmation to Server P." << endl;
+        cout << "[Server M] Forwarded the sell confirmation response to Server P." << endl;
 
         sendTimeShift(stock, udp_sockfd, serverQAddr);
 
@@ -609,8 +630,8 @@ void handlePositionCommand(int client_fd,
                            struct sockaddr_in& serverPAddr,
                            struct sockaddr_in& serverQAddr,
                            const string& username) {
-    cout << "[Server M] Received a position request from Member "
-         << username << " using TCP over port " << PORT_TCP << "." << endl;
+    cout << "[Server M] Received a position request from Member to check "
+         << username << "'s gain using TCP over port " << PORT_TCP << "." << endl;
 
     // Request all quotes from Server Q
     string quote_cmd = "quote";
@@ -680,5 +701,5 @@ void handlePositionCommand(int client_fd,
 
     // Send result to client
     send(client_fd, result.c_str(), result.length(), 0);
-    cout << "[Server M] Forwarded the user’s portfolio and gain to the client." << endl;
+    cout << "[Server M] Forwarded the gain to the client." << endl;
 }

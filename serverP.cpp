@@ -92,10 +92,9 @@ int main() {
     // Load all users' portfolios
     auto portfolios = loadPortfolioDatabase("portfolios.txt");
 
-
     cout << "[Server P] Booting up using UDP on port "
          << PORT_UDP << "." << endl;
-
+    
     while (true) {
         char buffer[MAXBUFLEN] = {0};
         struct sockaddr_in mAddr;
@@ -220,12 +219,14 @@ int main() {
             cout << "[Server P] Received a position request from the main server for Member: " << username << endl;
 
             auto it = portfolios.find(lower_username);
-            // username not found
+            // TODO username not found
             if (it == portfolios.end()) {
-                string err = "No portfolio found for user.";
-                sendto(udp_sockfd, err.c_str(), err.length(), 0,
+                ostringstream response;
+                response << "stock shares avg_buy_price\n";
+                string reply = response.str();
+                sendto(udp_sockfd, reply.c_str(), reply.length(), 0,
                     (struct sockaddr*)&mAddr, mAddrLen);
-                break;
+                continue;
             }
 
             const auto& portfolio = it->second.portfolio;
@@ -240,7 +241,7 @@ int main() {
 
                 response << stock << " " << info.shares << " " << info.avg_price << "\n";
             }
-
+            
             string reply = response.str();
             sendto(udp_sockfd, reply.c_str(), reply.length(), 0,
                 (struct sockaddr*)&mAddr, mAddrLen);
