@@ -14,6 +14,10 @@ In this assignment, I implemented a multi-server stock trading architecture usin
 - `serverP.cpp`: Portfolio server that manages users’ stock portfolios and updates them on buy/sell transactions.
 - `serverQ.cpp`: Quote server that handles stock price queries and maintains a time-shifted index for each stock.
 - `Makefile`: Builds all binaries using `g++`.
+  ```makefile
+  make all # To compile all the cpp files
+  make clean # To clean the excutable
+  ```
 
 ## Message Format
 
