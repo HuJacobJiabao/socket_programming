@@ -1,12 +1,12 @@
 # EE450 Socket Programming Project - Spring 2025
 
-## a. Full Name: Jiabao Hu
-## b. Student ID: 4395214812
-
-## c. Assignment Summary  
+## Assignment Summary  
 In this assignment, I implemented a multi-server stock trading architecture using TCP and UDP sockets. The main server (serverM) handles TCP connections from clients and coordinates with three backend servers (serverA, serverP, and serverQ) using UDP. The project supports user authentication, stock quoting, buying, selling, and position reporting. I also implemented dynamic port handling, struct-based communication, password encryption, time-shifted stock pricing, and a portfolio system.
+![alt text](image.png)
 
-## d. Code Files and Their Descriptions
+
+
+## Code Files and Their Descriptions
 
 - `client.cpp`: Handles user input and communicates with serverM over TCP. Supports commands like quote, buy, sell, position, and exit.
 - `serverM.cpp`: Main server that handles TCP clients and coordinates with backend servers over UDP.
@@ -15,7 +15,7 @@ In this assignment, I implemented a multi-server stock trading architecture usin
 - `serverQ.cpp`: Quote server that handles stock price queries and maintains a time-shifted index for each stock.
 - `Makefile`: Builds all binaries using `g++`.
 
-## e. Message Format
+## Message Format
 
 ---
 
@@ -114,16 +114,16 @@ In this assignment, I implemented a multi-server stock trading architecture usin
   - Portfolio: multiline text, each line: `"<stock> <shares> <avg_price>"` and last line `"<username>’s current profit is <gain value>."`
 ---
 
-## f. Project Idiosyncrasies
+## Project Idiosyncrasies
 
 - If the client disconnects unexpectedly (e.g., via Ctrl+C) during login or confirmation phases, the server may show a "disconnected" message and continue normally.
 - Buffer size limits apply to messages. Messages beyond 8192 bytes are not supported.
 - The project assumes that usernames and stock symbols are ASCII strings of reasonable length (<50 chars).
 
-## g. Reused Code
+## Reused Code
 
 - No external code was reused. 
 
-## h. Ubuntu Version
+## Ubuntu Version
 
 - The project was developed and tested on the provided **studentVM(64-bit)**.
